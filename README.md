@@ -50,48 +50,45 @@ langgraph-chat/
 
 ## Backend API Contract
 
-The frontend expects these three endpoints:
+The frontend talks to exactly **two** endpoints.
 
-### `POST /thread/new`
-```json
-// Response
-{ "thread_id": "uuid-string" }
-```
-
-### `POST /chat`
+### `POST /query`
 ```json
 // Request
-{ "thread_id": "...", "message": "user text" }
+{ "query": "user message text", "thread_id": "uuid | null" }
 
-// Normal response
-{ "type": "ai", "thread_id": "...", "content": "assistant reply" }
+// thread_id is null on the very first message of a session.
+// The backend returns a thread_id in every response; the frontend persists it.
 
-// HITL interrupt response
+// ── Success response ──
+{ "status": "COMPLETE", "answer": "final answer text", "thread_id": "uuid" }
+
+// ── HITL interrupt response ──
 {
-  "type": "hitl",
-  "thread_id": "...",
-  "fields": [
-    {
-      "name": "fieldKey",
-      "label": "Human-readable label",
-      "type": "text | textarea | select | number | email | date",
-      "required": true,
-      "placeholder": "optional hint",
-      "options": [                          // only for type=select
-        { "label": "Display", "value": "val" }
-      ]
-    }
-  ]
+  "status": "Awaiting USER_INPUT",
+  "missing_entities": ["customer_name", "order_id"],
+  "thread_id": "uuid"
 }
+// missing_entities is a plain string array of entity keys the graph still needs.
 ```
 
 ### `POST /resume`
 ```json
-// Request
-{ "thread_id": "...", "fields": { "fieldKey": "value", ... } }
+// Request — thread_id plus all missing entity values spread flat
+{
+  "thread_id": "uuid",
+  "customer_name": "Acme Corp",
+  "order_id": "ORD-8821"
+}
 
-// Response: same shape as /chat (type: "ai" or "hitl")
+// Response — always COMPLETE
+{ "status": "COMPLETE", "answer": "final answer text", "final_query": "merged query" }
 ```
+
+### Thread lifecycle
+- Frontend starts with `thread_id = null`.
+- Backend returns a `thread_id` in every `/query` response; the frontend stores it in state.
+- **New Chat** sets `thread_id` back to `null` — no backend call is made.
 
 ---
 
