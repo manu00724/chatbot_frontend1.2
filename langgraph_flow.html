@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangGraph Flow Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;800&display=swap');
+
+  :root {
+    --bg: #080c14;
+    --panel: #0d1424;
+    --border: #1a2540;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --muted: #4a5568;
+    --node-analyze: #1e3a5f;
+    --node-search: #2d1b4e;
+    --node-generate: #0f3d2e;
+    --hitl: #3d1f00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 20px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+
+  header p {
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-top: 6px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Scenario selector */
+  .scenarios {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 36px;
+    flex-wrap: wrap;
+  }
+
+  .scenario-btn {
+    padding: 8px 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .scenario-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .scenario-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.08); }
+
+  /* Main layout */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* Graph area */
+  .graph-area {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px 20px;
+    position: relative;
+  }
+
+  .graph-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Nodes */
+  .flow-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .node {
+    width: 100%;
+    max-width: 480px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    position: relative;
+    transition: all 0.4s ease;
+  }
+
+  .node.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 24px rgba(0,212,255,0.2), inset 0 0 24px rgba(0,212,255,0.03);
+  }
+
+  .node.done {
+    border-color: var(--accent3);
+    box-shadow: 0 0 12px rgba(16,185,129,0.15);
+  }
+
+  .node.paused {
+    border-color: var(--warn);
+    box-shadow: 0 0 24px rgba(245,158,11,0.25);
+    animation: pulse-warn 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-warn {
+    0%, 100% { box-shadow: 0 0 24px rgba(245,158,11,0.25); }
+    50% { box-shadow: 0 0 40px rgba(245,158,11,0.45); }
+  }
+
+  .node-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .node-icon {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .node-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .node-tag {
+    margin-left: auto;
+    font-size: 0.6rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .node-body {
+    font-size: 0.68rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .node-body .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    transition: color 0.3s;
+  }
+
+  .node-body .item.highlight { color: var(--accent); }
+  .node-body .item.done-item { color: var(--accent3); }
+
+  /* Node specific colors */
+  .node-start { background: rgba(0,212,255,0.04); }
+  .node-start .node-icon { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .node-start .node-label { color: var(--accent); }
+  .node-start .node-tag { background: rgba(0,212,255,0.1); color: var(--accent); }
+
+  .node-analyze { background: rgba(30,58,95,0.4); }
+  .node-analyze .node-icon { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .node-analyze .node-label { color: #60a5fa; }
+  .node-analyze.active { border-color: #60a5fa; box-shadow: 0 0 24px rgba(96,165,250,0.2); }
+  .node-analyze.done { border-color: var(--accent3); }
+
+  .node-router { background: rgba(124,58,237,0.08); }
+  .node-router .node-icon { background: rgba(124,58,237,0.2); color: #a78bfa; }
+  .node-router .node-label { color: #a78bfa; }
+  .node-router.active { border-color: #a78bfa; box-shadow: 0 0 24px rgba(167,139,250,0.2); }
+
+  .node-search { background: rgba(45,27,78,0.4); }
+  .node-search .node-icon { background: rgba(124,58,237,0.2); color: #c084fc; }
+  .node-search .node-label { color: #c084fc; }
+  .node-search.active { border-color: #c084fc; box-shadow: 0 0 24px rgba(192,132,252,0.2); }
+
+  .node-hitl { background: rgba(61,31,0,0.5); }
+  .node-hitl .node-icon { background: rgba(245,158,11,0.2); color: var(--warn); }
+  .node-hitl .node-label { color: var(--warn); }
+
+  .node-generate { background: rgba(15,61,46,0.4); }
+  .node-generate .node-icon { background: rgba(16,185,129,0.2); color: var(--accent3); }
+  .node-generate .node-label { color: var(--accent3); }
+  .node-generate.active { border-color: var(--accent3); box-shadow: 0 0 24px rgba(16,185,129,0.2); }
+
+  .node-end { background: rgba(0,212,255,0.04); }
+  .node-end .node-icon { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .node-end .node-label { color: var(--accent); }
+
+  /* Arrows */
+  .arrow-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    padding: 4px 0;
+  }
+
+  .arrow-line {
+    width: 2px;
+    height: 28px;
+    background: var(--border);
+    position: relative;
+    transition: background 0.3s;
+  }
+
+  .arrow-line.active-flow { background: var(--accent); }
+  .arrow-line.active-flow::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: flow-dot 0.8s linear infinite;
+  }
+
+  .arrow-line.flow-green { background: var(--accent3); }
+  .arrow-line.flow-green::after { background: var(--accent3); }
+
+  .arrow-line.flow-purple { background: #a78bfa; }
+  .arrow-line.flow-purple::after { background: #a78bfa; }
+
+  @keyframes flow-dot {
+    0% { top: 0; opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  .arrow-head {
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--border);
+    transition: border-top-color 0.3s;
+  }
+
+  .arrow-line.active-flow + .arrow-head { border-top-color: var(--accent); }
+  .arrow-line.flow-green + .arrow-head { border-top-color: var(--accent3); }
+  .arrow-line.flow-purple + .arrow-head { border-top-color: #a78bfa; }
+
+  .arrow-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* Branch arrows */
+  .branch-wrap {
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    height: 60px;
+    margin: 0;
+  }
+
+  .branch-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* HITL side panel (positioned absolutely over graph) */
+  .hitl-panel {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: rgba(245,158,11,0.06);
+    border: 1px dashed var(--warn);
+    border-radius: 6px;
+    padding: 14px 16px;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: all 0.5s ease;
+    pointer-events: none;
+  }
+
+  .hitl-panel.visible {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: all;
+  }
+
+  .hitl-panel h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.72rem;
+    color: var(--warn);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .hitl-field {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .hitl-field label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    width: 80px;
+    flex-shrink: 0;
+  }
+
+  .hitl-field input {
+    flex: 1;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 3px;
+    padding: 4px 8px;
+    color: var(--warn);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .hitl-field input:focus { border-color: var(--warn); }
+
+  .hitl-submit {
+    width: 100%;
+    margin-top: 8px;
+    padding: 7px;
+    background: rgba(245,158,11,0.15);
+    border: 1px solid var(--warn);
+    border-radius: 3px;
+    color: var(--warn);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .hitl-submit:hover { background: rgba(245,158,11,0.25); }
+
+  /* Right sidebar */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .sidebar-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .sidebar-panel h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* State viewer */
+  .state-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 10px;
+  }
+
+  .state-field-name {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .state-field-value {
+    font-size: 0.68rem;
+    color: var(--text);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 8px;
+    min-height: 24px;
+    transition: all 0.4s;
+    word-break: break-all;
+  }
+
+  .state-field-value.updated {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,212,255,0.06);
+  }
+
+  .state-field-value.warn-val {
+    border-color: var(--warn);
+    color: var(--warn);
+    background: rgba(245,158,11,0.06);
+  }
+
+  .state-field-value.green-val {
+    border-color: var(--accent3);
+    color: var(--accent3);
+    background: rgba(16,185,129,0.06);
+  }
+
+  /* Log */
+  .log-area {
+    font-size: 0.65rem;
+    line-height: 1.8;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .log-area::-webkit-scrollbar { width: 3px; }
+  .log-area::-webkit-scrollbar-track { background: transparent; }
+  .log-area::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    opacity: 0;
+    transform: translateY(4px);
+    animation: log-appear 0.3s forwards;
+  }
+
+  @keyframes log-appear {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-msg { }
+  .log-info { color: var(--accent); }
+  .log-warn { color: var(--warn); }
+  .log-success { color: var(--accent3); }
+  .log-error { color: var(--danger); }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 9px 18px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,212,255,0.06);
+  }
+
+  .btn-primary:hover { background: rgba(0,212,255,0.14); }
+  .btn:hover:not(.btn-primary) { border-color: var(--muted); }
+
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Speed */
+  .speed-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  .speed-wrap input[type=range] {
+    accent-color: var(--accent);
+    width: 80px;
+  }
+
+  /* graph_store badge */
+  .store-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124,58,237,0.1);
+    border: 1px solid rgba(124,58,237,0.3);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.6rem;
+    color: #a78bfa;
+    margin-bottom: 8px;
+  }
+
+  .store-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #a78bfa;
+  }
+
+  .store-dot.active-dot { animation: blink 0.8s ease-in-out infinite; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .memory-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(16,185,129,0.08);
+    border: 1px solid rgba(16,185,129,0.25);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 0.6rem;
+    color: var(--accent3);
+  }
+
+  .compile-badge {
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.2);
+    color: var(--accent);
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+
+  @media (max-width: 780px) {
+    .main-layout { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>LangGraph Flow Visualizer</h1>
+    <p>Trade Finance Chatbot — Interactive Architecture</p>
+  </header>
+
+  <div class="scenarios">
+    <button class="scenario-btn active" onclick="selectScenario('hitl')" id="btn-hitl">HITL Path (Missing Entities)</button>
+    <button class="scenario-btn" onclick="selectScenario('happy')" id="btn-happy">Happy Path (All Entities Present)</button>
+    <button class="scenario-btn" onclick="selectScenario('resume')" id="btn-resume">Resume After HITL</button>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="playBtn" onclick="startFlow()">▶ Run Flow</button>
+    <button class="btn" onclick="resetFlow()">↺ Reset</button>
+    <div class="speed-wrap">
+      <span>Speed</span>
+      <input type="range" min="0.5" max="3" step="0.5" value="1" id="speedSlider" oninput="updateSpeed(this.value)">
+      <span id="speedLabel">1×</span>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <!-- Graph -->
+    <div class="graph-area">
+      <div class="graph-title">graph_module.py → compiled graph</div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+        <div class="compile-badge">builder.compile( checkpointer=MemorySaver, interrupt_before=["search"] )</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+        <div class="store-badge"><div class="store-dot" id="storeDot"></div> graph_store[thread_id] = (graph, config)</div>
+        <div class="memory-badge">MemorySaver checkpoint</div>
+      </div>
+
+      <div class="flow-column">
+
+        <!-- START -->
+        <div class="node node-start" id="node-start">
+          <div class="node-header">
+            <div class="node-icon">⚡</div>
+            <div class="node-label">START</div>
+            <div class="node-tag" style="background:rgba(0,212,255,0.1);color:var(--accent)">Entry</div>
+          </div>
+          <div class="node-body">
+            <div class="item" id="si1">→ POST /query received</div>
+            <div class="item" id="si2">→ get_graph(thread_id) called</div>
+            <div class="item" id="si3">→ RAG chunks retrieved</div>
+          </div>
+        </div>
+
+        <div class="arrow-wrap">
+          <div class="arrow-line" id="arr-start-analyze"></div>
+          <div class="arrow-head" id="arh-start-analyze"></div>
+          <div class="arrow-label">graph.stream(initial_input)</div>
+        </div>
+
+        <!-- ANALYZE NODE -->
+        <div class="node node-analyze" id="node-analyze">
+          <div class="node-header">
+            <div class="node-icon">🔍</div>
+            <div class="node-label">analyze_query</div>
+            <div class="node-tag" style="background:rgba(96,165,250,0.1);color:#60a5fa">Node 1</div>
+          </div>
+          <div class="node-body">
+            <div class="item" id="an1">→ detect intent</div>
+            <div class="item" id="an2">→ extract entities from query</div>
+            <div class="item" id="an3">→ compute missing_entities</div>
+            <div class="item" id="an4">→ write to WorkflowState</div>
+          </div>
+        </div>
+
+        <div class="arrow-wrap">
+          <div class="arrow-line" id="arr-analyze-router"></div>
+          <div class="arrow-head" id="arh-analyze-router"></div>
+          <div class="arrow-label">conditional edge → decide_next(state)</div>
+        </div>
+
+        <!-- ROUTER -->
+        <div class="node node-router" id="node-router">
+          <div class="node-header">
+            <div class="node-icon">⑂</div>
+            <div class="node-label">decide_next()</div>
+            <div class="node-tag" style="background:rgba(124,58,237,0.15);color:#a78bfa">Conditional Edge</div>
+          </div>
+          <div class="node-body">
+            <div class="item" id="ro1">→ reads state["missing_entities"]</div>
+            <div class="item" id="ro2" id="router-path-a">→ if missing → route to "search"</div>
+            <div class="item" id="ro3" id="router-path-b">→ if empty  → route to "generate"</div>
+          </div>
+        </div>
+
+        <!-- Branch SVG -->
+        <div class="branch-wrap" id="branch-wrap" style="max-width:480px;">
+          <svg class="branch-svg" id="branchSvg" viewBox="0 0 480 60" preserveAspectRatio="none">
+            <!-- Left branch to search -->
+            <line id="bl1" x1="240" y1="0" x2="100" y2="50" stroke="#1a2540" stroke-width="2"/>
+            <polygon id="bl1h" points="95,45 105,45 100,55" fill="#1a2540"/>
+            <text x="60" y="30" fill="#4a5568" font-size="10" font-family="JetBrains Mono">search</text>
+            <!-- Right branch to generate -->
+            <line id="bl2" x1="240" y1="0" x2="380" y2="50" stroke="#1a2540" stroke-width="2"/>
+            <polygon id="bl2h" points="375,45 385,45 380,55" fill="#1a2540"/>
+            <text x="350" y="30" fill="#4a5568" font-size="10" font-family="JetBrains Mono">generate</text>
+          </svg>
+        </div>
+
+        <!-- Search + Generate row -->
+        <div style="display:flex; gap:16px; width:100%; max-width:480px; align-items:flex-start;">
+
+          <!-- Search column -->
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+            <div class="node node-search" id="node-search" style="width:100%">
+              <div class="node-header">
+                <div class="node-icon">🔎</div>
+                <div class="node-label">search</div>
+                <div class="node-tag" style="background:rgba(192,132,252,0.1);color:#c084fc">Node 2</div>
+              </div>
+              <div class="node-body">
+                <div class="item" id="se1">→ uses merged_entities</div>
+                <div class="item" id="se2">→ structured data fetch</div>
+                <div class="item" id="se3">→ refines retrieved_chunks</div>
+              </div>
+            </div>
+
+            <!-- HITL interrupt badge -->
+            <div style="width:100%; margin-top:8px;">
+              <div class="node node-hitl" id="node-hitl" style="display:none; width:100%">
+                <div class="node-header">
+                  <div class="node-icon">⛔</div>
+                  <div class="node-label">INTERRUPT</div>
+                  <div class="node-tag" style="background:rgba(245,158,11,0.15);color:var(--warn)">HITL</div>
+                </div>
+                <div class="node-body">
+                  <div class="item" id="hi1">interrupt_before=["search"]</div>
+                  <div class="item" id="hi2">→ MemorySaver saves state</div>
+                  <div class="item" id="hi3">→ returns AWAITING_USER_INPUT</div>
+                </div>
+              </div>
+
+              <!-- HITL form -->
+              <div class="hitl-panel" id="hitl-form" style="margin-top:8px;">
+                <h4>⚡ Frontend — User Input</h4>
+                <div class="hitl-field">
+                  <label>product</label>
+                  <input type="text" id="inp-product" placeholder="e.g. LC" value="LC">
+                </div>
+                <div class="hitl-field">
+                  <label>channel</label>
+                  <input type="text" id="inp-channel" placeholder="e.g. Branch" value="Branch">
+                </div>
+                <button class="hitl-submit" onclick="submitHitl()">Submit → POST /resume</button>
+              </div>
+            </div>
+
+            <!-- Arrow search→generate (only shows after resume) -->
+            <div class="arrow-wrap" id="arr-search-gen-wrap" style="display:none;">
+              <div class="arrow-line flow-purple" id="arr-search-gen"></div>
+              <div class="arrow-head" style="border-top-color:#c084fc"></div>
+            </div>
+          </div>
+
+          <!-- Generate column -->
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center;">
+            <div class="node node-generate" id="node-generate" style="width:100%">
+              <div class="node-header">
+                <div class="node-icon">✨</div>
+                <div class="node-label">generate</div>
+                <div class="node-tag" style="background:rgba(16,185,129,0.1);color:var(--accent3)">Node 3</div>
+              </div>
+              <div class="node-body">
+                <div class="item" id="ge1">→ QnA(query, chunks, history)</div>
+                <div class="item" id="ge2">→ LLM generates answer</div>
+                <div class="item" id="ge3">→ update past_queries/answers</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- END -->
+        <div class="arrow-wrap" style="margin-top:8px;">
+          <div class="arrow-line" id="arr-end"></div>
+          <div class="arrow-head" id="arh-end"></div>
+          <div class="arrow-label">status: COMPLETE</div>
+        </div>
+
+        <div class="node node-end" id="node-end">
+          <div class="node-header">
+            <div class="node-icon">✅</div>
+            <div class="node-label">END</div>
+            <div class="node-tag" style="background:rgba(0,212,255,0.1);color:var(--accent)">Response</div>
+          </div>
+          <div class="node-body">
+            <div class="item" id="en1">→ { status, answer, final_query }</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+
+      <!-- WorkflowState viewer -->
+      <div class="sidebar-panel">
+        <h3>WorkflowState (live)</h3>
+        <div class="state-field">
+          <div class="state-field-name">user_query</div>
+          <div class="state-field-value" id="st-query">—</div>
+        </div>
+        <div class="state-field">
+          <div class="state-field-name">intent</div>
+          <div class="state-field-value" id="st-intent">—</div>
+        </div>
+        <div class="state-field">
+          <div class="state-field-name">missing_entities</div>
+          <div class="state-field-value" id="st-missing">—</div>
+        </div>
+        <div class="state-field">
+          <div class="state-field-name">last_entities</div>
+          <div class="state-field-value" id="st-entities">—</div>
+        </div>
+        <div class="state-field">
+          <div class="state-field-name">final_answer</div>
+          <div class="state-field-value" id="st-answer">—</div>
+        </div>
+        <div class="state-field">
+          <div class="state-field-name">status</div>
+          <div class="state-field-value" id="st-status">—</div>
+        </div>
+      </div>
+
+      <!-- graph_store panel -->
+      <div class="sidebar-panel">
+        <h3>graph_store</h3>
+        <div style="font-size:0.65rem; color:var(--muted); line-height:1.9;" id="store-view">
+          <div>{ } ← empty</div>
+        </div>
+      </div>
+
+      <!-- MemorySaver -->
+      <div class="sidebar-panel">
+        <h3>MemorySaver checkpoint</h3>
+        <div style="font-size:0.65rem; color:var(--muted); line-height:1.9;" id="memory-view">
+          <div>No checkpoint yet</div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="sidebar-panel">
+        <h3>Execution Log</h3>
+        <div class="log-area" id="log-area">
+          <div class="log-entry"><span class="log-time">00:00</span><span class="log-info">Ready. Select a scenario and press Run.</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+let scenario = 'hitl';
+let speed = 1;
+let isRunning = false;
+let startTime = Date.now();
+let hitlWaiting = false;
+
+function selectScenario(s) {
+  scenario = s;
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + s).classList.add('active');
+  resetFlow();
+}
+
+function updateSpeed(v) {
+  speed = parseFloat(v);
+  document.getElementById('speedLabel').textContent = v + '×';
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms / speed));
+}
+
+function log(msg, type='info') {
+  const area = document.getElementById('log-area');
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${elapsed}s</span><span class="log-${type}">${msg}</span>`;
+  area.appendChild(entry);
+  area.scrollTop = area.scrollHeight;
+}
+
+function setState(field, value, style='updated') {
+  const el = document.getElementById('st-' + field);
+  el.textContent = value;
+  el.className = 'state-field-value ' + style;
+}
+
+function setNode(id, state) {
+  // state: idle, active, done, paused
+  const el = document.getElementById('node-' + id);
+  el.classList.remove('active', 'done', 'paused');
+  if (state !== 'idle') el.classList.add(state);
+}
+
+function setArrow(id, cls) {
+  const el = document.getElementById('arr-' + id);
+  if (el) {
+    el.className = 'arrow-line ' + cls;
+  }
+}
+
+function highlightItem(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'item highlight';
+}
+
+function doneItem(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'item done-item';
+}
+
+function setBranch(which) {
+  // which: 'search', 'generate', 'both', 'none'
+  const l1 = document.getElementById('bl1');
+  const l1h = document.getElementById('bl1h');
+  const l2 = document.getElementById('bl2');
+  const l2h = document.getElementById('bl2h');
+
+  const activeColor = scenario === 'happy' ? '#10b981' : '#c084fc';
+  const inactiveColor = '#1a2540';
+
+  if (which === 'search') {
+    l1.setAttribute('stroke', activeColor); l1h.setAttribute('fill', activeColor);
+    l2.setAttribute('stroke', inactiveColor); l2h.setAttribute('fill', inactiveColor);
+  } else if (which === 'generate') {
+    l2.setAttribute('stroke', activeColor); l2h.setAttribute('fill', activeColor);
+    l1.setAttribute('stroke', inactiveColor); l1h.setAttribute('fill', inactiveColor);
+  } else {
+    l1.setAttribute('stroke', inactiveColor); l1h.setAttribute('fill', inactiveColor);
+    l2.setAttribute('stroke', inactiveColor); l2h.setAttribute('fill', inactiveColor);
+  }
+}
+
+function updateStore(content) {
+  document.getElementById('store-view').innerHTML = content;
+  document.getElementById('storeDot').classList.add('active-dot');
+}
+
+function updateMemory(content) {
+  document.getElementById('memory-view').innerHTML = content;
+}
+
+function resetFlow() {
+  isRunning = false;
+  hitlWaiting = false;
+
+  ['start','analyze','router','search','hitl','generate','end'].forEach(n => setNode(n, 'idle'));
+  document.getElementById('node-hitl').style.display = 'none';
+  document.getElementById('hitl-form').classList.remove('visible');
+  document.getElementById('arr-search-gen-wrap').style.display = 'none';
+
+  ['start-analyze','analyze-router','search-gen','end'].forEach(id => setArrow(id, ''));
+  setBranch('none');
+
+  ['st-query','st-intent','st-missing','st-entities','st-answer','st-status'].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = '—';
+    el.className = 'state-field-value';
+  });
+
+  document.getElementById('store-view').innerHTML = '<div>{ } ← empty</div>';
+  document.getElementById('storeDot').classList.remove('active-dot');
+  document.getElementById('memory-view').innerHTML = '<div>No checkpoint yet</div>';
+
+  const logArea = document.getElementById('log-area');
+  logArea.innerHTML = '<div class="log-entry"><span class="log-time">00:00</span><span class="log-info">Ready. Press Run to start.</span></div>';
+
+  // Reset all items
+  ['si1','si2','si3','an1','an2','an3','an4','ro1','ro2','ro3',
+   'se1','se2','se3','hi1','hi2','hi3','ge1','ge2','ge3','en1'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'item';
+  });
+
+  document.getElementById('playBtn').disabled = false;
+  document.getElementById('playBtn').textContent = '▶ Run Flow';
+}
+
+async function startFlow() {
+  if (isRunning) return;
+  isRunning = true;
+  startTime = Date.now();
+  document.getElementById('playBtn').disabled = true;
+
+  if (scenario === 'hitl') await runHITL();
+  else if (scenario === 'happy') await runHappy();
+  else if (scenario === 'resume') await runResume();
+}
+
+async function runHITL() {
+  const q = "What are the charges for Letter of Credit?";
+
+  // START
+  setNode('start', 'active');
+  log('POST /query received', 'info');
+  await delay(600);
+  highlightItem('si1'); setState('query', q, 'updated');
+  await delay(500);
+  highlightItem('si2');
+  updateStore(`<div style="color:#a78bfa">"user123_t1" → <br>&nbsp;&nbsp;(graph, config)<br>&nbsp;&nbsp;MemorySaver: new</div>`);
+  log('get_graph("user123_t1") → new session created', 'info');
+  await delay(500);
+  highlightItem('si3');
+  log('RAG: retrieve_top_chunks() → 5 chunks, excel_count=3', 'info');
+  await delay(500);
+  doneItem('si1'); doneItem('si2'); doneItem('si3');
+  setNode('start', 'done');
+
+  // Arrow START → ANALYZE
+  setArrow('start-analyze', 'active-flow');
+  log('graph.stream(initial_input, config) called', 'info');
+  await delay(700);
+  setArrow('start-analyze', 'flow-green');
+
+  // ANALYZE
+  setNode('analyze', 'active');
+  log('Node: analyze_query executing...', 'info');
+  await delay(400);
+  highlightItem('an1'); setState('intent', 'fee_inquiry', 'updated');
+  log('  intent detected: fee_inquiry', 'info');
+  await delay(500);
+  highlightItem('an2');
+  log('  entities extracted: none found in query', 'warn');
+  await delay(500);
+  highlightItem('an3');
+  setState('missing', '["product","sub_product","channel"]', 'warn-val');
+  setState('entities', '{product:null, channel:null}', 'warn-val');
+  log('  missing_entities: [product, sub_product, channel]', 'warn');
+  await delay(500);
+  highlightItem('an4');
+  log('  WorkflowState updated', 'info');
+  await delay(400);
+  doneItem('an1'); doneItem('an2'); doneItem('an3'); doneItem('an4');
+  setNode('analyze', 'done');
+
+  // Arrow ANALYZE → ROUTER
+  setArrow('analyze-router', 'active-flow');
+  await delay(600);
+  setArrow('analyze-router', 'flow-purple');
+
+  // ROUTER
+  setNode('router', 'active');
+  log('conditional edge: decide_next(state)', 'info');
+  await delay(400);
+  highlightItem('ro1');
+  await delay(500);
+  highlightItem('ro2');
+  log('  missing_entities NOT empty → routing to "search"', 'warn');
+  await delay(500);
+  setNode('router', 'done');
+  setBranch('search');
+  await delay(600);
+
+  // INTERRUPT
+  document.getElementById('node-hitl').style.display = 'block';
+  setNode('hitl', 'paused');
+  log('⛔ interrupt_before=["search"] FIRES', 'warn');
+  await delay(400);
+  highlightItem('hi1');
+  await delay(400);
+  highlightItem('hi2');
+  updateMemory(`<div style="color:#f59e0b">thread:"user123_t1"<br>state saved ✓<br>missing:["product",...]<br>query:"LC charges?"</div>`);
+  log('  MemorySaver.put(thread_id, state)', 'warn');
+  await delay(400);
+  highlightItem('hi3');
+  setState('status', 'AWAITING_USER_INPUT', 'warn-val');
+  log('  → returns AWAITING_USER_INPUT to frontend', 'warn');
+  await delay(600);
+
+  // Show HITL form
+  document.getElementById('hitl-form').classList.add('visible');
+  log('⚡ Waiting for user to fill the form...', 'warn');
+  hitlWaiting = true;
+}
+
+async function submitHitl() {
+  if (!hitlWaiting) return;
+  hitlWaiting = false;
+  document.getElementById('hitl-form').classList.remove('visible');
+
+  const product = document.getElementById('inp-product').value || 'LC';
+  const channel = document.getElementById('inp-channel').value || 'Branch';
+
+  log(`User submitted: product=${product}, channel=${channel}`, 'success');
+  log('POST /resume received', 'info');
+  await delay(400);
+
+  // Merge entities
+  const merged = `{product:"${product}", channel:"${channel}"}`;
+  setState('entities', merged, 'updated');
+  setState('missing', '[]', 'green-val');
+  log('  merged_entities: ' + merged, 'info');
+  await delay(400);
+
+  log('  graph.update_state() → missing_entities cleared', 'info');
+  updateMemory(`<div style="color:#10b981">thread:"user123_t1"<br>state updated ✓<br>missing:[]<br>entities:${merged}</div>`);
+  await delay(500);
+
+  // Resume
+  log('  graph.stream(None, config) → RESUME', 'success');
+  setNode('hitl', 'done');
+
+  // Show search → generate arrow
+  document.getElementById('arr-search-gen-wrap').style.display = 'flex';
+
+  // SEARCH
+  setNode('search', 'active');
+  log('Node: search executing (resumed from checkpoint)', 'info');
+  await delay(400);
+  highlightItem('se1');
+  await delay(400);
+  highlightItem('se2');
+  log('  fetching LC Branch fee data...', 'info');
+  await delay(600);
+  highlightItem('se3');
+  log('  retrieved_chunks refined with entity filter', 'success');
+  await delay(400);
+  setNode('search', 'done');
+
+  // GENERATE
+  setNode('generate', 'active');
+  log('Node: generate executing', 'info');
+  await delay(400);
+  highlightItem('ge1');
+  await delay(400);
+  highlightItem('ge2');
+  log('  LLM generating answer...', 'info');
+  await delay(700);
+  highlightItem('ge3');
+  const answer = `LC via Branch: ₹500 flat + 0.1% of txn value`;
+  setState('answer', answer, 'green-val');
+  setState('status', 'COMPLETE', 'green-val');
+  log('  answer generated ✓', 'success');
+  await delay(400);
+  setNode('generate', 'done');
+
+  // END
+  setArrow('end', 'flow-green');
+  await delay(500);
+  setNode('end', 'active');
+  highlightItem('en1');
+  log('✅ Response: { status: COMPLETE, answer: "..." }', 'success');
+  await delay(300);
+  setNode('end', 'done');
+  log('Flow complete!', 'success');
+}
+
+async function runHappy() {
+  const q = "What are LC charges for Branch channel?";
+
+  // START
+  setNode('start', 'active');
+  log('POST /query received (all entities present)', 'info');
+  await delay(500);
+  highlightItem('si1'); setState('query', q, 'updated');
+  await delay(400);
+  highlightItem('si2');
+  updateStore(`<div style="color:#a78bfa">"user123_t2" → <br>&nbsp;&nbsp;(graph, config)</div>`);
+  await delay(400);
+  highlightItem('si3');
+  log('RAG: chunks retrieved, excel_count=2', 'info');
+  await delay(400);
+  setNode('start', 'done');
+
+  setArrow('start-analyze', 'active-flow');
+  await delay(700);
+  setArrow('start-analyze', 'flow-green');
+
+  // ANALYZE
+  setNode('analyze', 'active');
+  await delay(400);
+  highlightItem('an1'); setState('intent', 'fee_inquiry', 'updated');
+  await delay(400);
+  highlightItem('an2');
+  setState('entities', '{product:"LC", channel:"Branch"}', 'green-val');
+  log('  entities found in query: product=LC, channel=Branch', 'success');
+  await delay(400);
+  highlightItem('an3');
+  setState('missing', '[]', 'green-val');
+  log('  missing_entities: [] ← all present!', 'success');
+  await delay(400);
+  highlightItem('an4');
+  setNode('analyze', 'done');
+
+  setArrow('analyze-router', 'active-flow');
+  await delay(600);
+  setArrow('analyze-router', 'flow-green');
+
+  // ROUTER
+  setNode('router', 'active');
+  log('conditional edge: decide_next(state)', 'info');
+  await delay(400);
+  highlightItem('ro1');
+  await delay(400);
+  highlightItem('ro3');
+  log('  missing_entities IS empty → routing to "generate" directly', 'success');
+  await delay(500);
+  setNode('router', 'done');
+  setBranch('generate');
+  await delay(600);
+
+  // GENERATE (skip search entirely)
+  setNode('generate', 'active');
+  log('Node: generate executing (search skipped)', 'success');
+  await delay(400);
+  highlightItem('ge1');
+  await delay(400);
+  highlightItem('ge2');
+  log('  LLM generating answer...', 'info');
+  await delay(700);
+  highlightItem('ge3');
+  setState('answer', 'LC via Branch: ₹500 flat fee', 'green-val');
+  setState('status', 'COMPLETE', 'green-val');
+  setNode('generate', 'done');
+
+  setArrow('end', 'flow-green');
+  await delay(400);
+  setNode('end', 'active');
+  highlightItem('en1');
+  log('✅ COMPLETE — no HITL needed!', 'success');
+  setNode('end', 'done');
+}
+
+async function runResume() {
+  log('Simulating HITL pause already happened...', 'warn');
+  log('thread "user123_t1" exists in graph_store', 'info');
+  updateStore(`<div style="color:#a78bfa">"user123_t1" → <br>&nbsp;&nbsp;(graph, config)<br>&nbsp;&nbsp;← existing session</div>`);
+  updateMemory(`<div style="color:#f59e0b">Paused state loaded<br>missing:["product"]<br>query:"LC charges?"</div>`);
+
+  setState('query', 'What are LC charges?', 'warn-val');
+  setState('status', 'AWAITING_USER_INPUT', 'warn-val');
+  setState('missing', '["product","channel"]', 'warn-val');
+
+  setNode('start', 'done');
+  setNode('analyze', 'done');
+  setNode('router', 'done');
+  setBranch('search');
+  document.getElementById('node-hitl').style.display = 'block';
+  setNode('hitl', 'paused');
+
+  await delay(800);
+  log('POST /resume received', 'info');
+  log('  get_graph("user123_t1") → found in graph_store ✓', 'success');
+  await delay(500);
+  log('  graph.get_state(config) → loads checkpoint', 'info');
+  await delay(400);
+
+  const merged = '{product:"LC", channel:"Online"}';
+  setState('entities', merged, 'updated');
+  setState('missing', '[]', 'green-val');
+  log('  merged_entities: ' + merged, 'info');
+  log('  graph.update_state() → patches state', 'info');
+  updateMemory(`<div style="color:#10b981">Resumed ✓<br>missing:[]<br>entities:${merged}</div>`);
+  await delay(500);
+
+  log('  graph.stream(None, config) ← resume signal', 'success');
+  setNode('hitl', 'done');
+  document.getElementById('arr-search-gen-wrap').style.display = 'flex';
+
+  setNode('search', 'active');
+  log('Node: search executing from resume...', 'info');
+  await delay(500);
+  highlightItem('se1'); highlightItem('se2'); highlightItem('se3');
+  log('  targeted search with LC+Online entities', 'success');
+  await delay(700);
+  setNode('search', 'done');
+
+  setNode('generate', 'active');
+  await delay(400);
+  highlightItem('ge1'); highlightItem('ge2');
+  await delay(700);
+  highlightItem('ge3');
+  setState('answer', 'LC via Online: ₹250 flat fee', 'green-val');
+  setState('status', 'COMPLETE', 'green-val');
+  setNode('generate', 'done');
+
+  setArrow('end', 'flow-green');
+  await delay(400);
+  setNode('end', 'active');
+  highlightItem('en1');
+  log('✅ COMPLETE after resume!', 'success');
+  setNode('end', 'done');
+}
+</script>
+</body>
+</html>
